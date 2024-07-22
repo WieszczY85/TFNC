@@ -61,6 +61,7 @@ public class FileRenamer {
                         writer.println(word);
                     }
                 }
+                LOGGER.info("Finished renaming all files and directories.");
             } catch (IOException ex) {
                 LOGGER.severe("An error occurred: " + ex.getMessage());
             }
@@ -98,7 +99,7 @@ public class FileRenamer {
                         try {
                             renameIfNecessary(path, forbiddenWords);
                         } catch (IOException e) {
-                            throw new RuntimeException(e);
+                            LOGGER.severe("An error occurred: " + e.getMessage());
                         }
                     });
         }
@@ -112,7 +113,7 @@ public class FileRenamer {
                         try {
                             renameIfNecessary(path, forbiddenWords);
                         } catch (IOException e) {
-                            throw new RuntimeException(e);
+                            LOGGER.severe("An error occurred: " + e.getMessage());
                         }
                     });
         }
