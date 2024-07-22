@@ -44,7 +44,7 @@ public class FileRenamer {
         historyFile = new File("history.txt");
 
         // Add example words to forbiddenWordsArea
-        forbiddenWordsArea.setText("[xtorrenty.org] [Ex-torrenty.org] [DEVIL-TORRENTS.PL] [POLSKIE-TORRENTY.EU] [superseed.byethost7.com] [Devil-Site.PL] [BEST-TORRENTS.ORG]");
+        forbiddenWordsArea.setText("[xtorrenty.org] [Ex-torrenty.org] [DEVIL-TORRENTS.PL] [POLSKIE-TORRENTY.EU] [superseed.byethost7.com] [Devil-Site.PL] [BEST-TORRENTS.ORG] [Feniks-site.com.pl] [helltorrents.com]");
 
         JPanel directoryPanel = new JPanel(new FlowLayout());
         directoryPanel.add(directoryField);
@@ -94,7 +94,13 @@ public class FileRenamer {
         Path start = Paths.get(directory);
         try (Stream<Path> stream = Files.walk(start)) {
             stream.filter(Files::isRegularFile)
-                    .forEach(path -> renameIfNecessary(path, forbiddenWords));
+                    .forEach(path -> {
+                        try {
+                            renameIfNecessary(path, forbiddenWords);
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                    });
         }
         LOGGER.info("File names changed...");
 
@@ -102,29 +108,56 @@ public class FileRenamer {
         try (Stream<Path> stream = Files.walk(start)) {
             stream.filter(Files::isDirectory)
                     .sorted(Comparator.comparing(Path::getNameCount).reversed())
-                    .forEach(path -> renameIfNecessary(path, forbiddenWords));
+                    .forEach(path -> {
+                        try {
+                            renameIfNecessary(path, forbiddenWords);
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                    });
         }
         LOGGER.info("Directory names changed...");
     }
-    private void renameIfNecessary(Path path, List<String> forbiddenWords) {
+    private void renameIfNecessary(Path path, List<String> forbiddenWords) throws IOException {
         String name = path.getFileName().toString();
         for (String word : forbiddenWords) {
             String pattern = "(?i)" + Pattern.quote(word);
             if (Pattern.compile(pattern).matcher(name).find()) {
                 String newName = name.replaceAll(pattern, "").trim();
                 try {
+                    if (!Files.isWritable(path)) {
+                        LOGGER.severe("File is read-only: " + path);
+                        try (PrintWriter writer = new PrintWriter(new FileWriter(historyFile, true))) {
+                            writer.println("File is read-only: " + path);
+                        }
+                        return;
+                    }
                     Files.move(path, path.resolveSibling(newName));
                     try (PrintWriter writer = new PrintWriter(new FileWriter(historyFile, true))) {
                         writer.println("Changed file/directory name: " + name + " to " + newName);
                         LOGGER.severe("Changed file/directory name: " + name + " to " + newName);
                     }
+                } catch (AccessDeniedException e) {
+                    LOGGER.severe("No permission to rename: " + path);
+                    try (PrintWriter writer = new PrintWriter(new FileWriter(historyFile, true))) {
+                        writer.println("No permission to rename: " + path);
+                    }
+                } catch (FileSystemException e) {
+                    LOGGER.severe("I/O error during renaming: " + path);
+                    try (PrintWriter writer = new PrintWriter(new FileWriter(historyFile, true))) {
+                        writer.println("I/O error during renaming: " + path);
+                    }
                 } catch (IOException e) {
                     LOGGER.severe("An error occurred: " + e.getMessage());
+                    try (PrintWriter writer = new PrintWriter(new FileWriter(historyFile, true))) {
+                        writer.println("An error occurred: " + e.getMessage());
+                    }
                 }
                 break;
             }
         }
     }
+
     public static void main(String[] args)
     {
         new FileRenamer();
