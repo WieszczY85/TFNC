@@ -61,7 +61,6 @@ public class FileRenamer {
                         writer.println(word);
                     }
                 }
-                LOGGER.info("Finished renaming all files and directories.");
             } catch (IOException ex) {
                 LOGGER.severe("An error occurred: " + ex.getMessage());
             }
@@ -90,18 +89,14 @@ public class FileRenamer {
         frame.revalidate();
         frame.repaint();
     }
-    public void renameFilesAndDirectoriesInDirectory(String directory, List<String> forbiddenWords) throws IOException {
+    public void renameFilesAndDirectoriesInDirectory(String directory, List<String> forbiddenWords) {
         // Rename files
         Path start = Paths.get(directory);
         try (Stream<Path> stream = Files.walk(start)) {
             stream.filter(Files::isRegularFile)
-                    .forEach(path -> {
-                        try {
-                            renameIfNecessary(path, forbiddenWords);
-                        } catch (IOException e) {
-                            LOGGER.severe("An error occurred: " + e.getMessage());
-                        }
-                    });
+                    .forEach(path -> renameIfNecessary(path, forbiddenWords));
+        } catch (IOException exx) {
+            LOGGER.severe("An error occurred: " + exx.getMessage());
         }
         LOGGER.info("File names changed...");
 
@@ -109,17 +104,14 @@ public class FileRenamer {
         try (Stream<Path> stream = Files.walk(start)) {
             stream.filter(Files::isDirectory)
                     .sorted(Comparator.comparing(Path::getNameCount).reversed())
-                    .forEach(path -> {
-                        try {
-                            renameIfNecessary(path, forbiddenWords);
-                        } catch (IOException e) {
-                            LOGGER.severe("An error occurred: " + e.getMessage());
-                        }
-                    });
+                    .forEach(path -> renameIfNecessary(path, forbiddenWords));
+        } catch (IOException exxx) {
+            LOGGER.severe("An error occurred: " + exxx.getMessage());
         }
         LOGGER.info("Directory names changed...");
+        LOGGER.info("Finished renaming all files and directories.");
     }
-    private void renameIfNecessary(Path path, List<String> forbiddenWords) throws IOException {
+    private void renameIfNecessary(Path path, List<String> forbiddenWords) {
         String name = path.getFileName().toString();
         for (String word : forbiddenWords) {
             String pattern = "(?i)" + Pattern.quote(word);
@@ -137,28 +129,35 @@ public class FileRenamer {
                     LOGGER.severe("Changed file/directory name: " + name + " to " + newName);
                     try (PrintWriter writer = new PrintWriter(new FileWriter(historyFile, true))) {
                         writer.println("Changed file/directory name: " + name + " to " + newName);
+                    } catch (IOException epath) {
+                        LOGGER.severe("An error occurred: " + epath.getMessage());
                     }
                 } catch (AccessDeniedException e) {
                     LOGGER.severe("No permission to rename: " + path);
                     try (PrintWriter writer = new PrintWriter(new FileWriter(historyFile, true))) {
                         writer.println("No permission to rename: " + path);
+                    } catch (IOException eAccess) {
+                        LOGGER.severe("An error occurred: " + eAccess.getMessage());
                     }
                 } catch (FileSystemException e) {
                     LOGGER.severe("File system error during renaming: " + path);
                     try (PrintWriter writer = new PrintWriter(new FileWriter(historyFile, true))) {
                         writer.println("File system error during renaming: " + path);
+                    } catch (IOException eFileSystem) {
+                        LOGGER.severe("An error occurred: " + eFileSystem.getMessage());
                     }
                 } catch (IOException e) {
                     LOGGER.severe("An error occurred: " + e.getMessage());
                     try (PrintWriter writer = new PrintWriter(new FileWriter(historyFile, true))) {
                         writer.println("An error occurred: " + e.getMessage());
+                    } catch (IOException eIOE) {
+                        LOGGER.severe("An error occurred: " + eIOE.getMessage());
                     }
                 }
                 break;
             }
         }
     }
-
 
     public static void main(String[] args)
     {
