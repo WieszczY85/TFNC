@@ -133,9 +133,9 @@ public class FileRenamer {
                         return;
                     }
                     Files.move(path, path.resolveSibling(newName));
+                    LOGGER.severe("Changed file/directory name: " + name + " to " + newName);
                     try (PrintWriter writer = new PrintWriter(new FileWriter(historyFile, true))) {
                         writer.println("Changed file/directory name: " + name + " to " + newName);
-                        LOGGER.severe("Changed file/directory name: " + name + " to " + newName);
                     }
                 } catch (AccessDeniedException e) {
                     LOGGER.severe("No permission to rename: " + path);
@@ -143,9 +143,9 @@ public class FileRenamer {
                         writer.println("No permission to rename: " + path);
                     }
                 } catch (FileSystemException e) {
-                    LOGGER.severe("I/O error during renaming: " + path);
+                    LOGGER.severe("File system error during renaming: " + path);
                     try (PrintWriter writer = new PrintWriter(new FileWriter(historyFile, true))) {
-                        writer.println("I/O error during renaming: " + path);
+                        writer.println("File system error during renaming: " + path);
                     }
                 } catch (IOException e) {
                     LOGGER.severe("An error occurred: " + e.getMessage());
@@ -157,6 +157,7 @@ public class FileRenamer {
             }
         }
     }
+
 
     public static void main(String[] args)
     {
