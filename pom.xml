@@ -6,7 +6,7 @@
 
     <groupId>pl.syntaxerr</groupId>
     <artifactId>T.F.N.C.</artifactId>
-    <version>1.0-beta-2</version>
+    <version>1.0-beta-3</version>
     <description>Basic version of the program with GUI - Does not require running from the terminal</description>
     <contributors>
         <contributor>

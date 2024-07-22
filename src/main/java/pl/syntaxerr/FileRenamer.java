@@ -20,18 +20,20 @@ public class FileRenamer {
     private final JFrame frame;
     private final File forbiddenWordsFile;
     private final File historyFile;
+    private final JProgressBar progressBar;
+    private final JLabel statusLabel;
 
     public FileRenamer() {
         frame = new JFrame("T.F.N.C. - Torrent File Name Cleaner");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        frame.setSize(500, 300);
+        frame.setSize(400, 300);
+
+        progressBar = new JProgressBar();
+        statusLabel = new JLabel("Gotowy do działania");
 
         directoryField = new JTextField(20); // Set the width of the text field
         directoryField.setToolTipText("Enter the directory path here or select using the button");
         JButton directoryChooserButton = new JButton("Select directory");
-
-        Dimension buttonSize = directoryChooserButton.getPreferredSize();
-        directoryChooserButton.setPreferredSize(new Dimension(buttonSize.width / 2, buttonSize.height));
 
         forbiddenWordsArea = new JTextArea();
         forbiddenWordsArea.setLineWrap(true);
@@ -43,8 +45,7 @@ public class FileRenamer {
         forbiddenWordsFile = new File("blacklist.txt");
         historyFile = new File("history.txt");
 
-        // Add example words to forbiddenWordsArea
-        forbiddenWordsArea.setText("[xtorrenty.org] [Ex-torrenty.org] [DEVIL-TORRENTS.PL] [POLSKIE-TORRENTY.EU] [superseed.byethost7.com] [Devil-Site.PL] [BEST-TORRENTS.ORG] [Feniks-site.com.pl] [helltorrents.com]");
+        forbiddenWordsArea.setText("[xtorrenty.org] [Ex-torrenty.org] [DEVIL-TORRENTS.PL] [POLSKIE-TORRENTY.EU] [superseed.byethost7.com] [Devil-Site.PL] [BEST-TORRENTS.ORG] [Feniks-site.com.pl] [helltorrents.com] [electro-torrent.pl]");
 
         JPanel directoryPanel = new JPanel(new FlowLayout());
         directoryPanel.add(directoryField);
@@ -79,18 +80,32 @@ public class FileRenamer {
         });
 
         frame.setLayout(new BorderLayout());
-        frame.add(new JLabel("Directory:"), BorderLayout.NORTH);
-        frame.add(directoryPanel, BorderLayout.NORTH);
-        frame.add(directoryChooserButton, BorderLayout.NORTH);
-        frame.add(new JLabel("Forbidden words:"), BorderLayout.CENTER);
-        frame.add(forbiddenWordsArea, BorderLayout.CENTER);
-        frame.add(runButton, BorderLayout.SOUTH);
+
+        JPanel northPanel = new JPanel(new BorderLayout());
+        northPanel.add(new JLabel("Directory:"), BorderLayout.NORTH);
+        northPanel.add(directoryPanel, BorderLayout.CENTER);
+
+        JPanel centerPanel = new JPanel(new BorderLayout());
+        centerPanel.add(new JLabel("Forbidden words:"), BorderLayout.NORTH);
+        centerPanel.add(forbiddenWordsArea, BorderLayout.CENTER);
+
+        JPanel southPanel = new JPanel(new BorderLayout());
+        southPanel.add(statusLabel, BorderLayout.SOUTH);
+        southPanel.add(progressBar, BorderLayout.NORTH);
+        southPanel.add(runButton, BorderLayout.CENTER);
+
+        frame.add(northPanel, BorderLayout.NORTH);
+        frame.add(centerPanel, BorderLayout.CENTER);
+        frame.add(southPanel, BorderLayout.SOUTH);
+
         frame.setVisible(true);
         frame.revalidate();
         frame.repaint();
     }
+
     public void renameFilesAndDirectoriesInDirectory(String directory, List<String> forbiddenWords) {
-        // Rename files
+        SwingUtilities.invokeLater(() -> progressBar.setIndeterminate(true));
+        statusLabel.setText("Zmienianie nazw plików i katalogów...");
         Path start = Paths.get(directory);
         try (Stream<Path> stream = Files.walk(start)) {
             stream.filter(Files::isRegularFile)
@@ -99,8 +114,6 @@ public class FileRenamer {
             LOGGER.severe("An error occurred: " + exx.getMessage());
         }
         LOGGER.info("File names changed...");
-
-        // Rename directories
         try (Stream<Path> stream = Files.walk(start)) {
             stream.filter(Files::isDirectory)
                     .sorted(Comparator.comparing(Path::getNameCount).reversed())
@@ -110,7 +123,10 @@ public class FileRenamer {
         }
         LOGGER.info("Directory names changed...");
         LOGGER.info("Finished renaming all files and directories.");
+        SwingUtilities.invokeLater(() -> progressBar.setIndeterminate(false));
+        statusLabel.setText("Zakończono zmianę nazw plików i katalogów");
     }
+
     private void renameIfNecessary(Path path, List<String> forbiddenWords) {
         String name = path.getFileName().toString();
         for (String word : forbiddenWords) {
