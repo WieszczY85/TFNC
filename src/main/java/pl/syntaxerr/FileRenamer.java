@@ -29,7 +29,7 @@ public class FileRenamer {
         frame.setSize(400, 300);
 
         progressBar = new JProgressBar();
-        statusLabel = new JLabel("Gotowy do działania");
+        statusLabel = new JLabel("Ready...");
 
         directoryField = new JTextField(20); // Set the width of the text field
         directoryField.setToolTipText("Enter the directory path here or select using the button");
@@ -89,10 +89,13 @@ public class FileRenamer {
         centerPanel.add(new JLabel("Forbidden words:"), BorderLayout.NORTH);
         centerPanel.add(forbiddenWordsArea, BorderLayout.CENTER);
 
+        JPanel progressPanel = new JPanel(new BorderLayout());
+        progressPanel.add(statusLabel, BorderLayout.NORTH);
+        progressPanel.add(progressBar, BorderLayout.SOUTH);
+
         JPanel southPanel = new JPanel(new BorderLayout());
-        southPanel.add(statusLabel, BorderLayout.SOUTH);
-        southPanel.add(progressBar, BorderLayout.NORTH);
-        southPanel.add(runButton, BorderLayout.CENTER);
+        southPanel.add(progressPanel, BorderLayout.NORTH); // Add the progress panel here
+        southPanel.add(runButton, BorderLayout.SOUTH);
 
         frame.add(northPanel, BorderLayout.NORTH);
         frame.add(centerPanel, BorderLayout.CENTER);
@@ -101,11 +104,12 @@ public class FileRenamer {
         frame.setVisible(true);
         frame.revalidate();
         frame.repaint();
+
     }
 
     public void renameFilesAndDirectoriesInDirectory(String directory, List<String> forbiddenWords) {
         SwingUtilities.invokeLater(() -> progressBar.setIndeterminate(true));
-        statusLabel.setText("Zmienianie nazw plików i katalogów...");
+        statusLabel.setText("Renaming files and directories...");
         Path start = Paths.get(directory);
         try (Stream<Path> stream = Files.walk(start)) {
             stream.filter(Files::isRegularFile)
@@ -124,7 +128,7 @@ public class FileRenamer {
         LOGGER.info("Directory names changed...");
         LOGGER.info("Finished renaming all files and directories.");
         SwingUtilities.invokeLater(() -> progressBar.setIndeterminate(false));
-        statusLabel.setText("Zakończono zmianę nazw plików i katalogów");
+        statusLabel.setText("Finished renaming all files and directories");
     }
 
     private void renameIfNecessary(Path path, List<String> forbiddenWords) {
