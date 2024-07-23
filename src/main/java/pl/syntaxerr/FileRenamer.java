@@ -109,27 +109,32 @@ public class FileRenamer {
     }
 
     public void renameFilesAndDirectoriesInDirectory(String directory, List<String> forbiddenWords) {
-        SwingUtilities.invokeLater(() -> progressBar.setIndeterminate(true));
-        statusLabel.setText("Renaming files and directories...");
+        SwingUtilities.invokeLater(() -> {
+            progressBar.setIndeterminate(true);
+            statusLabel.setText("Renaming files and directories... Please wait!");
+        });
+
         Path start = Paths.get(directory);
         try (Stream<Path> stream = Files.walk(start)) {
-            stream.filter(Files::isRegularFile)
-                    .forEach(path -> renameIfNecessary(path, forbiddenWords));
-        } catch (IOException exx) {
-            LOGGER.severe("An error occurred: " + exx.getMessage());
+            stream.filter(Files::isRegularFile).forEach(path -> renameIfNecessary(path, forbiddenWords));
+        } catch (IOException ex) {
+            LOGGER.severe("An error occurred while walking through files: " + ex.getMessage());
+            SwingUtilities.invokeLater(() -> statusLabel.setText("Error walking through files."));
         }
         LOGGER.info("File names changed...");
+
         try (Stream<Path> stream = Files.walk(start)) {
-            stream.filter(Files::isDirectory)
-                    .sorted(Comparator.comparing(Path::getNameCount).reversed())
-                    .forEach(path -> renameIfNecessary(path, forbiddenWords));
-        } catch (IOException exxx) {
-            LOGGER.severe("An error occurred: " + exxx.getMessage());
+            stream.filter(Files::isDirectory).sorted(Comparator.comparing(Path::getNameCount).reversed()).forEach(path -> renameIfNecessary(path, forbiddenWords));
+        } catch (IOException ex) {
+            LOGGER.severe("An error occurred while walking through directories: " + ex.getMessage());
+            SwingUtilities.invokeLater(() -> statusLabel.setText("Error walking through directories."));
         }
         LOGGER.info("Directory names changed...");
         LOGGER.info("Finished renaming all files and directories.");
-        SwingUtilities.invokeLater(() -> progressBar.setIndeterminate(false));
-        statusLabel.setText("Finished renaming all files and directories");
+        SwingUtilities.invokeLater(() -> {
+            progressBar.setIndeterminate(false);
+            statusLabel.setText("Finished renaming all files and directories");
+        });
     }
 
     private void renameIfNecessary(Path path, List<String> forbiddenWords) {
