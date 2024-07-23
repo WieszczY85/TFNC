@@ -20,6 +20,7 @@ public class FileRenamer {
     private final JFrame frame;
     private final File forbiddenWordsFile;
     private final File historyFile;
+    private final File errorFile;
     private final JProgressBar progressBar;
     private final JLabel statusLabel;
 
@@ -44,6 +45,7 @@ public class FileRenamer {
 
         forbiddenWordsFile = new File("blacklist.txt");
         historyFile = new File("history.txt");
+        errorFile = new File("error.txt");
 
         forbiddenWordsArea.setText("[xtorrenty.org] [Ex-torrenty.org] [DEVIL-TORRENTS.PL] [POLSKIE-TORRENTY.EU] [superseed.byethost7.com] [Devil-Site.PL] [BEST-TORRENTS.ORG] [Feniks-site.com.pl] [helltorrents.com] [electro-torrent.pl]");
 
@@ -100,7 +102,6 @@ public class FileRenamer {
         frame.add(northPanel, BorderLayout.NORTH);
         frame.add(centerPanel, BorderLayout.CENTER);
         frame.add(southPanel, BorderLayout.SOUTH);
-
         frame.setVisible(true);
         frame.revalidate();
         frame.repaint();
@@ -140,7 +141,7 @@ public class FileRenamer {
                 try {
                     if (!Files.isWritable(path)) {
                         LOGGER.severe("File is read-only: " + path);
-                        try (PrintWriter writer = new PrintWriter(new FileWriter(historyFile, true))) {
+                        try (PrintWriter writer = new PrintWriter(new FileWriter(errorFile, true))) {
                             writer.println("File is read-only: " + path);
                         }
                         return;
@@ -152,27 +153,31 @@ public class FileRenamer {
                     } catch (IOException epath) {
                         LOGGER.severe("An error occurred: " + epath.getMessage());
                     }
+                    SwingUtilities.invokeLater(() -> progressBar.setValue(progressBar.getValue() + 1));
                 } catch (AccessDeniedException e) {
                     LOGGER.severe("No permission to rename: " + path);
-                    try (PrintWriter writer = new PrintWriter(new FileWriter(historyFile, true))) {
+                    try (PrintWriter writer = new PrintWriter(new FileWriter(errorFile, true))) {
                         writer.println("No permission to rename: " + path);
                     } catch (IOException eAccess) {
                         LOGGER.severe("An error occurred: " + eAccess.getMessage());
                     }
+                    SwingUtilities.invokeLater(() -> statusLabel.setText("Error: No permission to rename " + path));
                 } catch (FileSystemException e) {
                     LOGGER.severe("File system error during renaming: " + path);
-                    try (PrintWriter writer = new PrintWriter(new FileWriter(historyFile, true))) {
+                    try (PrintWriter writer = new PrintWriter(new FileWriter(errorFile, true))) {
                         writer.println("File system error during renaming: " + path);
                     } catch (IOException eFileSystem) {
                         LOGGER.severe("An error occurred: " + eFileSystem.getMessage());
                     }
+                    SwingUtilities.invokeLater(() -> statusLabel.setText("Error: File system error during renaming " + path));
                 } catch (IOException e) {
                     LOGGER.severe("An error occurred: " + e.getMessage());
-                    try (PrintWriter writer = new PrintWriter(new FileWriter(historyFile, true))) {
+                    try (PrintWriter writer = new PrintWriter(new FileWriter(errorFile, true))) {
                         writer.println("An error occurred: " + e.getMessage());
                     } catch (IOException eIOE) {
                         LOGGER.severe("An error occurred: " + eIOE.getMessage());
                     }
+                    SwingUtilities.invokeLater(() -> statusLabel.setText("Error: An error occurred during renaming " + path));
                 }
                 break;
             }
