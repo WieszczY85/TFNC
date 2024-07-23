@@ -153,7 +153,6 @@ public class FileRenamer {
                     } catch (IOException epath) {
                         LOGGER.severe("An error occurred: " + epath.getMessage());
                     }
-                    SwingUtilities.invokeLater(() -> progressBar.setValue(progressBar.getValue() + 1));
                 } catch (AccessDeniedException e) {
                     LOGGER.severe("No permission to rename: " + path);
                     try (PrintWriter writer = new PrintWriter(new FileWriter(errorFile, true))) {
