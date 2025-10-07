@@ -7,11 +7,11 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
 import java.util.List;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
 
 public class FileRenamer {
     private static final Logger LOGGER = Logger.getLogger(FileRenamer.class.getName());
@@ -115,16 +115,16 @@ public class FileRenamer {
         });
 
         Path start = Paths.get(directory);
-        try (Stream<Path> stream = Files.walk(start)) {
-            stream.filter(Files::isRegularFile).forEach(path -> renameIfNecessary(path, forbiddenWords));
+        try {
+            processFiles(start, forbiddenWords);
         } catch (IOException ex) {
             LOGGER.severe("An error occurred while walking through files: " + ex.getMessage());
             SwingUtilities.invokeLater(() -> statusLabel.setText("Error walking through files."));
         }
         LOGGER.info("File names changed...");
 
-        try (Stream<Path> stream = Files.walk(start)) {
-            stream.filter(Files::isDirectory).sorted(Comparator.comparing(Path::getNameCount).reversed()).forEach(path -> renameIfNecessary(path, forbiddenWords));
+        try {
+            processDirectories(start, forbiddenWords);
         } catch (IOException ex) {
             LOGGER.severe("An error occurred while walking through directories: " + ex.getMessage());
             SwingUtilities.invokeLater(() -> statusLabel.setText("Error walking through directories."));
@@ -135,6 +135,58 @@ public class FileRenamer {
             progressBar.setIndeterminate(false);
             statusLabel.setText("Finished renaming all files and directories");
         });
+    }
+
+    private void processFiles(Path start, List<String> forbiddenWords) throws IOException {
+        Files.walkFileTree(start, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                renameIfNecessary(file, forbiddenWords);
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                handleVisitFailure(file, exc);
+                return FileVisitResult.CONTINUE;
+            }
+        });
+    }
+
+    private void processDirectories(Path start, List<String> forbiddenWords) throws IOException {
+        Files.walkFileTree(start, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult postVisitDirectory(Path dir, IOException exc) {
+                if (exc != null) {
+                    handleVisitFailure(dir, exc);
+                } else {
+                    renameIfNecessary(dir, forbiddenWords);
+                }
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                handleVisitFailure(file, exc);
+                return FileVisitResult.CONTINUE;
+            }
+        });
+    }
+
+    private void handleVisitFailure(Path path, IOException exc) {
+        String message = "Failed to access: " + path + " (" + exc.getMessage() + ")";
+        LOGGER.severe(message);
+        try (PrintWriter writer = new PrintWriter(new FileWriter(errorFile, true))) {
+            writer.println(message);
+        } catch (IOException errorFileException) {
+            LOGGER.severe("An error occurred: " + errorFileException.getMessage());
+        }
+        SwingUtilities.invokeLater(() -> statusLabel.setText("Error accessing " + path));
     }
 
     private void renameIfNecessary(Path path, List<String> forbiddenWords) {
