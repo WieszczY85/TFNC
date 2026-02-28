@@ -23,8 +23,27 @@ public class FileRenamer {
     private final File errorFile;
     private final JProgressBar progressBar;
     private final JLabel statusLabel;
+    private final boolean headlessMode;
 
     public FileRenamer() {
+        this(false);
+    }
+
+    public FileRenamer(boolean headlessMode) {
+        this.headlessMode = headlessMode;
+        forbiddenWordsFile = new File("blacklist.txt");
+        historyFile = new File("history.txt");
+        errorFile = new File("error.txt");
+
+        if (headlessMode) {
+            frame = null;
+            progressBar = null;
+            statusLabel = null;
+            directoryField = null;
+            forbiddenWordsArea = null;
+            return;
+        }
+
         frame = new JFrame("T.F.N.C. - Torrent File Name Cleaner");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setSize(400, 300);
@@ -42,10 +61,6 @@ public class FileRenamer {
         forbiddenWordsArea.setToolTipText("Enter forbidden words here, separating them with spaces");
 
         JButton runButton = new JButton("Run");
-
-        forbiddenWordsFile = new File("blacklist.txt");
-        historyFile = new File("history.txt");
-        errorFile = new File("error.txt");
 
         forbiddenWordsArea.setText("[xtorrenty.org] [Ex-torrenty.org] [DEVIL-TORRENTS.PL] [POLSKIE-TORRENTY.EU] [superseed.byethost7.com] [Devil-Site.PL] [BEST-TORRENTS.ORG] [Feniks-site.com.pl] [helltorrents.com] [electro-torrent.pl]");
 
@@ -105,21 +120,18 @@ public class FileRenamer {
         frame.setVisible(true);
         frame.revalidate();
         frame.repaint();
-
     }
 
     public void renameFilesAndDirectoriesInDirectory(String directory, List<String> forbiddenWords) {
-        SwingUtilities.invokeLater(() -> {
-            progressBar.setIndeterminate(true);
-            statusLabel.setText("Renaming files and directories... Please wait!");
-        });
+        setProgressIndeterminate(true);
+        setStatus("Renaming files and directories... Please wait!");
 
         Path start = Paths.get(directory);
         try {
             processFiles(start, forbiddenWords);
         } catch (IOException ex) {
             LOGGER.severe("An error occurred while walking through files: " + ex.getMessage());
-            SwingUtilities.invokeLater(() -> statusLabel.setText("Error walking through files."));
+            setStatus("Error walking through files.");
         }
         LOGGER.info("File names changed...");
 
@@ -127,14 +139,26 @@ public class FileRenamer {
             processDirectories(start, forbiddenWords);
         } catch (IOException ex) {
             LOGGER.severe("An error occurred while walking through directories: " + ex.getMessage());
-            SwingUtilities.invokeLater(() -> statusLabel.setText("Error walking through directories."));
+            setStatus("Error walking through directories.");
         }
         LOGGER.info("Directory names changed...");
         LOGGER.info("Finished renaming all files and directories.");
-        SwingUtilities.invokeLater(() -> {
-            progressBar.setIndeterminate(false);
-            statusLabel.setText("Finished renaming all files and directories");
-        });
+        setProgressIndeterminate(false);
+        setStatus("Finished renaming all files and directories");
+    }
+
+    private void setStatus(String text) {
+        if (headlessMode || statusLabel == null) {
+            return;
+        }
+        SwingUtilities.invokeLater(() -> statusLabel.setText(text));
+    }
+
+    private void setProgressIndeterminate(boolean indeterminate) {
+        if (headlessMode || progressBar == null) {
+            return;
+        }
+        SwingUtilities.invokeLater(() -> progressBar.setIndeterminate(indeterminate));
     }
 
     private void processFiles(Path start, List<String> forbiddenWords) throws IOException {
@@ -186,7 +210,7 @@ public class FileRenamer {
         } catch (IOException errorFileException) {
             LOGGER.severe("An error occurred: " + errorFileException.getMessage());
         }
-        SwingUtilities.invokeLater(() -> statusLabel.setText("Error accessing " + path));
+        setStatus("Error accessing " + path);
     }
 
     private void renameIfNecessary(Path path, List<String> forbiddenWords) {
@@ -217,7 +241,7 @@ public class FileRenamer {
                     } catch (IOException eAccess) {
                         LOGGER.severe("An error occurred: " + eAccess.getMessage());
                     }
-                    SwingUtilities.invokeLater(() -> statusLabel.setText("Error: No permission to rename " + path));
+                    setStatus("Error: No permission to rename " + path);
                 } catch (FileSystemException e) {
                     LOGGER.severe("File system error during renaming: " + path);
                     try (PrintWriter writer = new PrintWriter(new FileWriter(errorFile, true))) {
@@ -225,7 +249,7 @@ public class FileRenamer {
                     } catch (IOException eFileSystem) {
                         LOGGER.severe("An error occurred: " + eFileSystem.getMessage());
                     }
-                    SwingUtilities.invokeLater(() -> statusLabel.setText("Error: File system error during renaming " + path));
+                    setStatus("Error: File system error during renaming " + path);
                 } catch (IOException e) {
                     LOGGER.severe("An error occurred: " + e.getMessage());
                     try (PrintWriter writer = new PrintWriter(new FileWriter(errorFile, true))) {
@@ -233,15 +257,154 @@ public class FileRenamer {
                     } catch (IOException eIOE) {
                         LOGGER.severe("An error occurred: " + eIOE.getMessage());
                     }
-                    SwingUtilities.invokeLater(() -> statusLabel.setText("Error: An error occurred during renaming " + path));
+                    setStatus("Error: An error occurred during renaming " + path);
                 }
                 break;
             }
         }
     }
 
-    public static void main(String[] args)
-    {
-        new FileRenamer();
+    private static void runCli(List<String> args) {
+        if (args.size() < 2) {
+            LOGGER.severe("Tryb CLI wymaga argumentów: <katalog> <zakazane-słowo-1> [zakazane-słowo-2] ...");
+            System.exit(1);
+            return;
+        }
+
+        String directory = args.get(0);
+        List<String> forbiddenWords = args.subList(1, args.size());
+        new FileRenamer(true).renameFilesAndDirectoriesInDirectory(directory, forbiddenWords);
+    }
+
+    private static void logGuiTroubleshooting(Throwable ex) {
+        String display = System.getenv("DISPLAY");
+        String waylandDisplay = System.getenv("WAYLAND_DISPLAY");
+        String xdgSessionType = System.getenv("XDG_SESSION_TYPE");
+        String xdgRuntimeDir = System.getenv("XDG_RUNTIME_DIR");
+        String xauthority = System.getenv("XAUTHORITY");
+        String javaHeadless = System.getProperty("java.awt.headless");
+        String javaVersion = System.getProperty("java.version");
+        String javaVendor = System.getProperty("java.vendor");
+        String javaRuntime = System.getProperty("java.runtime.name");
+        String sudoUser = System.getenv("SUDO_USER");
+        String currentUser = System.getProperty("user.name");
+
+        LOGGER.severe("Brak dostępu do sesji graficznej AWT/Swing.");
+        LOGGER.severe("Przyczyna: " + ex.getClass().getSimpleName() + ": " + ex.getMessage());
+        LOGGER.severe("Użytkownik procesu=" + currentUser + ", SUDO_USER=" + sudoUser);
+        LOGGER.severe("JVM=" + javaRuntime + " " + javaVersion + " (" + javaVendor + "), java.awt.headless=" + javaHeadless);
+        LOGGER.severe("DISPLAY=" + display + ", WAYLAND_DISPLAY=" + waylandDisplay + ", XDG_SESSION_TYPE=" + xdgSessionType + ", XDG_RUNTIME_DIR=" + xdgRuntimeDir + ", XAUTHORITY=" + xauthority);
+
+        String lowered = String.valueOf(ex.getMessage()).toLowerCase(Locale.ROOT);
+        if (lowered.contains("headful library") || lowered.contains("headless")) {
+            LOGGER.severe("To wygląda na środowisko JRE bez pełnych bibliotek GUI (np. pakiet headless) albo wymuszony tryb headless.");
+            LOGGER.severe("Na Debianie sprawdź: java -version oraz czy masz pełny pakiet JRE/JDK (nie headless). Przykład: sudo apt install openjdk-21-jre");
+        }
+
+        if ("root".equals(currentUser) && sudoUser != null) {
+            LOGGER.severe("Aplikacja działa jako root przez sudo. W Wayland to zwykle blokuje GUI (brak dostępu do sesji użytkownika).");
+            LOGGER.severe("Uruchom bez sudo, albo zachowaj zmienne sesji i autoryzację X11/Wayland.");
+            LOGGER.severe("Przykład (X11): sudo --preserve-env=DISPLAY,XAUTHORITY java -jar target/T.F.N.C.-1.0-beta-4.jar --gui");
+            LOGGER.severe("Przykład (Wayland): sudo --preserve-env=WAYLAND_DISPLAY,XDG_RUNTIME_DIR java -jar target/T.F.N.C.-1.0-beta-4.jar --gui");
+        }
+
+        LOGGER.severe("Jeśli chcesz GUI na Debian/KDE/Wayland, uruchom aplikację w tej samej sesji użytkownika co Plasma.");
+        LOGGER.severe("W przeciwnym razie użyj trybu CLI: --cli <katalog> <zakazane-słowo-1> ...");
+    }
+
+    private static int runGuiDiagnostics() {
+        String display = System.getenv("DISPLAY");
+        String waylandDisplay = System.getenv("WAYLAND_DISPLAY");
+        String xdgRuntimeDir = System.getenv("XDG_RUNTIME_DIR");
+        String xauthority = System.getenv("XAUTHORITY");
+        String currentUser = System.getProperty("user.name");
+        String sudoUser = System.getenv("SUDO_USER");
+        String javaVersion = System.getProperty("java.version");
+        String javaVendor = System.getProperty("java.vendor");
+        String javaRuntime = System.getProperty("java.runtime.name");
+
+        LOGGER.info("=== Diagnostyka GUI ===");
+        LOGGER.info("Użytkownik procesu=" + currentUser + ", SUDO_USER=" + sudoUser);
+        LOGGER.info("JVM=" + javaRuntime + " " + javaVersion + " (" + javaVendor + ")");
+        LOGGER.info("java.awt.headless=" + System.getProperty("java.awt.headless"));
+        LOGGER.info("DISPLAY=" + display);
+        LOGGER.info("WAYLAND_DISPLAY=" + waylandDisplay);
+        LOGGER.info("XDG_RUNTIME_DIR=" + xdgRuntimeDir);
+        LOGGER.info("XAUTHORITY=" + xauthority);
+
+        boolean desktopModulePresent = ModuleLayer.boot().findModule("java.desktop").isPresent();
+        LOGGER.info("Moduł java.desktop dostępny=" + desktopModulePresent);
+        LOGGER.info("GraphicsEnvironment.isHeadless()=" + GraphicsEnvironment.isHeadless());
+
+        if (display != null) {
+            Path x11Socket = Path.of("/tmp/.X11-unix", display.replace(":", "X"));
+            LOGGER.info("X11 socket istnieje=" + Files.exists(x11Socket) + " (" + x11Socket + ")");
+        }
+
+        if (waylandDisplay != null && xdgRuntimeDir != null) {
+            Path waylandSocket = Path.of(xdgRuntimeDir, waylandDisplay);
+            LOGGER.info("Wayland socket istnieje=" + Files.exists(waylandSocket) + " (" + waylandSocket + ")");
+        }
+
+        if (!desktopModulePresent) {
+            LOGGER.severe("Wniosek: brak modułu java.desktop w runtime. To wyklucza GUI.");
+            return 1;
+        }
+
+        boolean likelyNoGuiSession = (display == null && waylandDisplay == null) || xdgRuntimeDir == null;
+        if (likelyNoGuiSession) {
+            LOGGER.severe("Wniosek: proces nie ma poprawnego dostępu do sesji GUI.");
+            return 1;
+        }
+
+        LOGGER.info("Wniosek: środowisko wygląda na GUI-ready. Jeśli GUI nadal nie startuje, sprawdź czy używasz pakietu JRE/JDK bez headless i czy biblioteki X11 są doinstalowane.");
+        LOGGER.info("Debian (przykład): sudo apt install openjdk-21-jre libx11-6 libxext6 libxrender1 libxtst6 libxi6 libfreetype6 libfontconfig1");
+        return 0;
+    }
+
+    public static void main(String[] args) {
+        boolean forceCli = Arrays.stream(args).anyMatch(arg -> "--cli".equalsIgnoreCase(arg));
+        boolean forceGui = Arrays.stream(args).anyMatch(arg -> "--gui".equalsIgnoreCase(arg));
+        boolean diagnoseGui = Arrays.stream(args).anyMatch(arg -> "--diagnose-gui".equalsIgnoreCase(arg));
+
+        if ((forceCli && forceGui) || (diagnoseGui && (forceCli || forceGui))) {
+            LOGGER.severe("Nieprawidłowa kombinacja flag. Użyj tylko jednego trybu: --gui, --cli lub --diagnose-gui.");
+            System.exit(2);
+            return;
+        }
+
+        List<String> filteredArgs = Arrays.stream(args)
+                .filter(arg -> !"--cli".equalsIgnoreCase(arg) && !"--gui".equalsIgnoreCase(arg) && !"--diagnose-gui".equalsIgnoreCase(arg))
+                .toList();
+
+        if (diagnoseGui) {
+            System.exit(runGuiDiagnostics());
+            return;
+        }
+
+        if (forceCli) {
+            runCli(filteredArgs);
+            return;
+        }
+
+        try {
+            new FileRenamer(false);
+        } catch (HeadlessException | AWTError | UnsatisfiedLinkError ex) {
+            logGuiTroubleshooting(ex);
+
+            if (forceGui) {
+                System.exit(1);
+                return;
+            }
+
+            if (filteredArgs.size() >= 2) {
+                LOGGER.info("Przełączanie do trybu CLI po nieudanej próbie startu GUI.");
+                runCli(filteredArgs);
+                return;
+            }
+
+            LOGGER.severe("Brak argumentów do trybu CLI. Podaj: --cli <katalog> <zakazane-słowo-1> [zakazane-słowo-2] ...");
+            System.exit(1);
+        }
     }
 }
