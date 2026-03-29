@@ -44,14 +44,17 @@ java -jar build/libs/T.F.N.C.-1.0-beta-4.jar --gui
 Składnia:
 
 ```bash
-java -jar build/libs/T.F.N.C.-1.0-beta-4.jar --cli <katalog> <zakazane-słowo-1> [zakazane-słowo-2] ...
+java -jar build/libs/T.F.N.C.-1.0-beta-4.jar --cli <katalog> [dodatkowe-zakazane-słowo-1] [dodatkowe-zakazane-słowo-2] ...
 ```
 
 Przykład:
 
 ```bash
-java -jar build/libs/T.F.N.C.-1.0-beta-4.jar --cli "/dane/Filmy" "[1337x.to]" "[rarbg.to]"
+java -jar build/libs/T.F.N.C.-1.0-beta-4.jar --cli "/dane/Filmy" "[nowy-tracker.example]"
 ```
+
+W trybie CLI aplikacja **zawsze ładuje listę zakazanych słów z `blacklist.txt`**.  
+Argumenty po ścieżce katalogu są opcjonalne i działają jako **dodatkowe słowa spoza listy** (tylko dla bieżącego uruchomienia).
 
 ### 3) Diagnostyka problemów z GUI
 
@@ -70,7 +73,7 @@ chmod +x gradlew
 
 ## Pliki robocze tworzone przez aplikację
 
-W katalogu uruchomienia aplikacji mogą pojawić się:
+W katalogu uruchomienia aplikacji aplikacja tworzy przy starcie (jeśli nie istnieją):
 - `blacklist.txt` – zapis listy zakazanych fraz,
 - `history.txt` – historia zmian nazw,
 - `error.txt` – log błędów.

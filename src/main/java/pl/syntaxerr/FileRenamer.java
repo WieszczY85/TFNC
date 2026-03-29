@@ -15,6 +15,12 @@ import java.util.regex.Pattern;
 
 public class FileRenamer {
     private static final Logger LOGGER = Logger.getLogger(FileRenamer.class.getName());
+    private static final List<String> DEFAULT_FORBIDDEN_WORDS = List.of(
+            "[xtorrenty.org]", "[Ex-torrenty.org]", "[DEVIL-TORRENTS.PL]", "[POLSKIE-TORRENTY.EU]", "[superseed.byethost7.com]",
+            "[Devil-Site.PL]", "[BEST-TORRENTS.ORG]", "[Feniks-site.com.pl]", "[helltorrents.com]", "[electro-torrent.pl]",
+            "[rarbg.to]", "[1337x.to]", "[torrentgalaxy.to]", "[yts.mx]", "[thepiratebay.org]", "[eztv.re]",
+            "[katcr.co]", "[limetorrents.lol]", "[nyaa.si]", "[zooqle.com]", "[torlock.com]", "[torrentdownloads.me]"
+    );
     private final JTextField directoryField;
     private final JTextArea forbiddenWordsArea;
     private final JFrame frame;
@@ -34,6 +40,7 @@ public class FileRenamer {
         forbiddenWordsFile = new File("blacklist.txt");
         historyFile = new File("history.txt");
         errorFile = new File("error.txt");
+        ensureAppFilesExist();
 
         if (headlessMode) {
             frame = null;
@@ -62,12 +69,7 @@ public class FileRenamer {
 
         JButton runButton = new JButton("Run");
 
-        forbiddenWordsArea.setText("""
-                [xtorrenty.org] [Ex-torrenty.org] [DEVIL-TORRENTS.PL] [POLSKIE-TORRENTY.EU] [superseed.byethost7.com]
-                [Devil-Site.PL] [BEST-TORRENTS.ORG] [Feniks-site.com.pl] [helltorrents.com] [electro-torrent.pl]
-                [rarbg.to] [1337x.to] [torrentgalaxy.to] [yts.mx] [thepiratebay.org] [eztv.re]
-                [katcr.co] [limetorrents.lol] [nyaa.si] [zooqle.com] [torlock.com] [torrentdownloads.me]
-                """);
+        forbiddenWordsArea.setText(String.join(System.lineSeparator(), readForbiddenWordsFromFile()));
 
         JPanel directoryPanel = new JPanel(new FlowLayout());
         directoryPanel.add(directoryField);
@@ -125,6 +127,47 @@ public class FileRenamer {
         frame.setVisible(true);
         frame.revalidate();
         frame.repaint();
+    }
+
+    private void ensureAppFilesExist() {
+        try {
+            if (!forbiddenWordsFile.exists()) {
+                try (PrintWriter writer = new PrintWriter(new FileWriter(forbiddenWordsFile))) {
+                    for (String word : DEFAULT_FORBIDDEN_WORDS) {
+                        writer.println(word);
+                    }
+                }
+            }
+
+            if (!historyFile.exists() && !historyFile.createNewFile()) {
+                LOGGER.warning("Nie udało się utworzyć pliku historii: " + historyFile.getAbsolutePath());
+            }
+
+            if (!errorFile.exists() && !errorFile.createNewFile()) {
+                LOGGER.warning("Nie udało się utworzyć pliku błędów: " + errorFile.getAbsolutePath());
+            }
+        } catch (IOException ex) {
+            LOGGER.severe("Nie udało się przygotować plików aplikacji: " + ex.getMessage());
+        }
+    }
+
+    private List<String> readForbiddenWordsFromFile() {
+        if (!forbiddenWordsFile.exists()) {
+            return new ArrayList<>(DEFAULT_FORBIDDEN_WORDS);
+        }
+
+        try {
+            List<String> words = Files.readAllLines(forbiddenWordsFile.toPath()).stream()
+                    .map(String::trim)
+                    .filter(line -> !line.isBlank())
+                    .toList();
+            if (!words.isEmpty()) {
+                return words;
+            }
+        } catch (IOException ex) {
+            LOGGER.severe("Nie udało się odczytać blacklist.txt: " + ex.getMessage());
+        }
+        return new ArrayList<>(DEFAULT_FORBIDDEN_WORDS);
     }
 
     public void renameFilesAndDirectoriesInDirectory(String directory, List<String> forbiddenWords) {
@@ -317,15 +360,25 @@ public class FileRenamer {
     }
 
     private static void runCli(List<String> args) {
-        if (args.size() < 2) {
-            LOGGER.severe("Tryb CLI wymaga argumentów: <katalog> <zakazane-słowo-1> [zakazane-słowo-2] ...");
+        if (args.isEmpty()) {
+            LOGGER.severe("Tryb CLI wymaga argumentów: <katalog> [dodatkowe-zakazane-słowo-1] [dodatkowe-zakazane-słowo-2] ...");
             System.exit(1);
             return;
         }
 
         String directory = args.get(0);
-        List<String> forbiddenWords = args.subList(1, args.size());
-        new FileRenamer(true).renameFilesAndDirectoriesInDirectory(directory, forbiddenWords);
+        FileRenamer renamer = new FileRenamer(true);
+
+        LinkedHashSet<String> mergedForbiddenWords = new LinkedHashSet<>(renamer.readForbiddenWordsFromFile());
+        mergedForbiddenWords.addAll(args.subList(1, args.size()));
+
+        if (mergedForbiddenWords.isEmpty()) {
+            LOGGER.severe("Brak zakazanych słów. Uzupełnij blacklist.txt lub podaj dodatkowe słowa w CLI.");
+            System.exit(1);
+            return;
+        }
+
+        renamer.renameFilesAndDirectoriesInDirectory(directory, new ArrayList<>(mergedForbiddenWords));
     }
 
     private static void logGuiTroubleshooting(Throwable ex) {
@@ -360,8 +413,8 @@ public class FileRenamer {
             LOGGER.severe("Przykład (Wayland): sudo --preserve-env=WAYLAND_DISPLAY,XDG_RUNTIME_DIR java -jar target/T.F.N.C.-1.0-beta-4.jar --gui");
         }
 
-        LOGGER.severe("Jeśli chcesz GUI na Debian/KDE/Wayland, uruchom aplikację w tej samej sesji użytkownika co Plasma.");
-        LOGGER.severe("W przeciwnym razie użyj trybu CLI: --cli <katalog> <zakazane-słowo-1> ...");
+            LOGGER.severe("Jeśli chcesz GUI na Debian/KDE/Wayland, uruchom aplikację w tej samej sesji użytkownika co Plasma.");
+        LOGGER.severe("W przeciwnym razie użyj trybu CLI: --cli <katalog> [dodatkowe-zakazane-słowo-1] ...");
     }
 
     private static int runGuiDiagnostics() {
@@ -455,7 +508,7 @@ public class FileRenamer {
                 return;
             }
 
-            LOGGER.severe("Brak argumentów do trybu CLI. Podaj: --cli <katalog> <zakazane-słowo-1> [zakazane-słowo-2] ...");
+            LOGGER.severe("Brak argumentów do trybu CLI. Podaj: --cli <katalog> [dodatkowe-zakazane-słowo-1] [dodatkowe-zakazane-słowo-2] ...");
             System.exit(1);
         }
     }
