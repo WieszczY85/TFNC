@@ -71,6 +71,7 @@ public class FileRenamer {
         forbiddenWordsArea.setToolTipText("Enter forbidden words here, one per line");
 
         JButton runButton = new JButton("Run");
+        JButton undoButton = new JButton("Undo from history");
 
         forbiddenWordsArea.setText(String.join(System.lineSeparator(), readForbiddenWordsFromFile()));
 
@@ -92,6 +93,16 @@ public class FileRenamer {
             } catch (IOException ex) {
                 LOGGER.severe("An error occurred: " + ex.getMessage());
             }
+        });
+
+        undoButton.addActionListener(e -> {
+            String directory = directoryField.getText();
+            if (directory == null || directory.isBlank()) {
+                setStatus("Podaj katalog do cofania zmian.");
+                LOGGER.severe("Brak katalogu dla cofania zmian.");
+                return;
+            }
+            undoRenamesFromHistory(directory);
         });
 
         directoryChooserButton.addActionListener(e -> {
@@ -120,9 +131,13 @@ public class FileRenamer {
         progressPanel.add(statusLabel, BorderLayout.NORTH);
         progressPanel.add(progressBar, BorderLayout.SOUTH);
 
+        JPanel buttonsPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        buttonsPanel.add(runButton);
+        buttonsPanel.add(undoButton);
+
         JPanel southPanel = new JPanel(new BorderLayout());
         southPanel.add(progressPanel, BorderLayout.NORTH); // Add the progress panel here
-        southPanel.add(runButton, BorderLayout.SOUTH);
+        southPanel.add(buttonsPanel, BorderLayout.SOUTH);
 
         frame.add(northPanel, BorderLayout.NORTH);
         frame.add(centerPanel, BorderLayout.CENTER);
@@ -438,15 +453,21 @@ public class FileRenamer {
     }
 
     void undoRenamesFromHistory(String directory) {
+        setProgressIndeterminate(true);
+        setStatus("Cofanie zmian nazw... Proszę czekać.");
         Path root = Paths.get(directory);
         if (!Files.isDirectory(root)) {
             LOGGER.severe("Podana ścieżka nie jest katalogiem: " + directory);
+            setProgressIndeterminate(false);
+            setStatus("Błędny katalog: " + directory);
             return;
         }
 
         List<HistoryEntry> entries = readHistoryEntries();
         if (entries.isEmpty()) {
             LOGGER.severe("Brak wpisów historii do cofnięcia.");
+            setProgressIndeterminate(false);
+            setStatus("Brak wpisów historii.");
             return;
         }
 
@@ -465,6 +486,8 @@ public class FileRenamer {
         }
 
         LOGGER.info("Cofanie zmian zakończone. Przywrócone=" + reverted + ", pominięte=" + skipped);
+        setProgressIndeterminate(false);
+        setStatus("Cofanie zakończone. Przywrócone=" + reverted + ", pominięte=" + skipped);
     }
 
     private boolean revertByAbsolutePath(HistoryEntry entry) {
@@ -488,16 +511,7 @@ public class FileRenamer {
     }
 
     private boolean revertByName(Path root, String oldName, String newName) {
-        List<Path> matches = new ArrayList<>();
-        try {
-            try (var paths = Files.walk(root)) {
-                paths.filter(path -> path.getFileName() != null && path.getFileName().toString().equals(newName))
-                        .forEach(matches::add);
-            }
-        } catch (IOException ex) {
-            LOGGER.severe("Nie udało się przeszukać katalogu do cofania zmian: " + ex.getMessage());
-            return false;
-        }
+        List<Path> matches = findPathsByName(root, newName);
 
         if (matches.size() != 1) {
             LOGGER.severe("Pominięto cofnięcie dla '" + newName + "' (liczba dopasowań=" + matches.size() + ")");
@@ -519,6 +533,38 @@ public class FileRenamer {
             LOGGER.severe("Nie udało się cofnąć zmiany dla: " + current + " (" + ex.getMessage() + ")");
             return false;
         }
+    }
+
+    private List<Path> findPathsByName(Path root, String nameToFind) {
+        List<Path> matches = new ArrayList<>();
+        try {
+            Files.walkFileTree(root, new SimpleFileVisitor<>() {
+                @Override
+                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                    if (dir.getFileName() != null && dir.getFileName().toString().equals(nameToFind)) {
+                        matches.add(dir);
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                    if (file.getFileName() != null && file.getFileName().toString().equals(nameToFind)) {
+                        matches.add(file);
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                    handleVisitFailure(file, exc);
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        } catch (IOException ex) {
+            LOGGER.severe("Nie udało się przeszukać katalogu do cofania zmian: " + ex.getMessage());
+        }
+        return matches;
     }
 
     private static void logGuiTroubleshooting(Throwable ex) {

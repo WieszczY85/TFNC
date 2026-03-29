@@ -70,6 +70,8 @@ java -jar build/libs/T.F.N.C.-1.0-beta-4.jar --undo-history <katalog>
 
 To polecenie czyta `history.txt` i próbuje odwrócić zmiany w odwrotnej kolejności.
 
+W GUI dostępny jest także przycisk **Undo from history** (cofa zmiany dla katalogu z pola `Directory`).
+
 > Ważne: stare wpisy historii miały tylko nazwy (`old -> new`) bez pełnych ścieżek.  
 > Dla takich wpisów cofanie działa wyłącznie wtedy, gdy w podanym katalogu jest dokładnie **jedno** dopasowanie nazwy.
 > Przy wieloznaczności wpis jest pomijany, żeby nie zepsuć nazw bardziej.
