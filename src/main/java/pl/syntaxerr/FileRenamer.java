@@ -62,7 +62,12 @@ public class FileRenamer {
 
         JButton runButton = new JButton("Run");
 
-        forbiddenWordsArea.setText("[xtorrenty.org] [Ex-torrenty.org] [DEVIL-TORRENTS.PL] [POLSKIE-TORRENTY.EU] [superseed.byethost7.com] [Devil-Site.PL] [BEST-TORRENTS.ORG] [Feniks-site.com.pl] [helltorrents.com] [electro-torrent.pl]");
+        forbiddenWordsArea.setText("""
+                [xtorrenty.org] [Ex-torrenty.org] [DEVIL-TORRENTS.PL] [POLSKIE-TORRENTY.EU] [superseed.byethost7.com]
+                [Devil-Site.PL] [BEST-TORRENTS.ORG] [Feniks-site.com.pl] [helltorrents.com] [electro-torrent.pl]
+                [rarbg.to] [1337x.to] [torrentgalaxy.to] [yts.mx] [thepiratebay.org] [eztv.re]
+                [katcr.co] [limetorrents.lol] [nyaa.si] [zooqle.com] [torlock.com] [torrentdownloads.me]
+                """);
 
         JPanel directoryPanel = new JPanel(new FlowLayout());
         directoryPanel.add(directoryField);
@@ -71,7 +76,7 @@ public class FileRenamer {
 
         runButton.addActionListener(e -> {
             String directory = directoryField.getText();
-            List<String> forbiddenWords = Arrays.asList(forbiddenWordsArea.getText().split("\\s+"));
+            List<String> forbiddenWords = parseForbiddenWords(forbiddenWordsArea.getText());
             try {
                 renameFilesAndDirectoriesInDirectory(directory, forbiddenWords);
                 try (PrintWriter writer = new PrintWriter(new FileWriter(forbiddenWordsFile))) {
@@ -215,53 +220,100 @@ public class FileRenamer {
 
     private void renameIfNecessary(Path path, List<String> forbiddenWords) {
         String name = path.getFileName().toString();
+        String newName = name;
+        boolean changed = false;
+
         for (String word : forbiddenWords) {
+            if (word == null || word.isBlank()) {
+                continue;
+            }
+
             String pattern = "(?i)" + Pattern.quote(word);
-            if (Pattern.compile(pattern).matcher(name).find()) {
-                String newName = name.replaceAll(pattern, "").trim();
-                try {
-                    if (!Files.isWritable(path)) {
-                        LOGGER.severe("File is read-only: " + path);
-                        try (PrintWriter writer = new PrintWriter(new FileWriter(errorFile, true))) {
-                            writer.println("File is read-only: " + path);
-                        }
-                        return;
-                    }
-                    Files.move(path, path.resolveSibling(newName));
-                    LOGGER.severe("Changed file/directory name: " + name + " to " + newName);
-                    try (PrintWriter writer = new PrintWriter(new FileWriter(historyFile, true))) {
-                        writer.println("Changed file/directory name: " + name + " to " + newName);
-                    } catch (IOException epath) {
-                        LOGGER.severe("An error occurred: " + epath.getMessage());
-                    }
-                } catch (AccessDeniedException e) {
-                    LOGGER.severe("No permission to rename: " + path);
-                    try (PrintWriter writer = new PrintWriter(new FileWriter(errorFile, true))) {
-                        writer.println("No permission to rename: " + path);
-                    } catch (IOException eAccess) {
-                        LOGGER.severe("An error occurred: " + eAccess.getMessage());
-                    }
-                    setStatus("Error: No permission to rename " + path);
-                } catch (FileSystemException e) {
-                    LOGGER.severe("File system error during renaming: " + path);
-                    try (PrintWriter writer = new PrintWriter(new FileWriter(errorFile, true))) {
-                        writer.println("File system error during renaming: " + path);
-                    } catch (IOException eFileSystem) {
-                        LOGGER.severe("An error occurred: " + eFileSystem.getMessage());
-                    }
-                    setStatus("Error: File system error during renaming " + path);
-                } catch (IOException e) {
-                    LOGGER.severe("An error occurred: " + e.getMessage());
-                    try (PrintWriter writer = new PrintWriter(new FileWriter(errorFile, true))) {
-                        writer.println("An error occurred: " + e.getMessage());
-                    } catch (IOException eIOE) {
-                        LOGGER.severe("An error occurred: " + eIOE.getMessage());
-                    }
-                    setStatus("Error: An error occurred during renaming " + path);
-                }
-                break;
+            if (Pattern.compile(pattern).matcher(newName).find()) {
+                newName = newName.replaceAll(pattern, "");
+                changed = true;
             }
         }
+
+        if (changed) {
+            newName = newName.trim();
+
+            if (newName.isBlank()) {
+                String message = "Pominięto zmianę, bo nowa nazwa byłaby pusta: " + path;
+                LOGGER.severe(message);
+                try (PrintWriter writer = new PrintWriter(new FileWriter(errorFile, true))) {
+                    writer.println(message);
+                } catch (IOException eBlank) {
+                    LOGGER.severe("An error occurred: " + eBlank.getMessage());
+                }
+                return;
+            }
+
+            try {
+                if (!Files.isWritable(path)) {
+                    LOGGER.severe("File is read-only: " + path);
+                    try (PrintWriter writer = new PrintWriter(new FileWriter(errorFile, true))) {
+                        writer.println("File is read-only: " + path);
+                    }
+                    return;
+                }
+                Files.move(path, path.resolveSibling(newName));
+                LOGGER.severe("Changed file/directory name: " + name + " to " + newName);
+                try (PrintWriter writer = new PrintWriter(new FileWriter(historyFile, true))) {
+                    writer.println("Changed file/directory name: " + name + " to " + newName);
+                } catch (IOException epath) {
+                    LOGGER.severe("An error occurred: " + epath.getMessage());
+                }
+            } catch (AccessDeniedException e) {
+                LOGGER.severe("No permission to rename: " + path);
+                try (PrintWriter writer = new PrintWriter(new FileWriter(errorFile, true))) {
+                    writer.println("No permission to rename: " + path);
+                } catch (IOException eAccess) {
+                    LOGGER.severe("An error occurred: " + eAccess.getMessage());
+                }
+                setStatus("Error: No permission to rename " + path);
+            } catch (FileSystemException e) {
+                LOGGER.severe("File system error during renaming: " + path);
+                try (PrintWriter writer = new PrintWriter(new FileWriter(errorFile, true))) {
+                    writer.println("File system error during renaming: " + path);
+                } catch (IOException eFileSystem) {
+                    LOGGER.severe("An error occurred: " + eFileSystem.getMessage());
+                }
+                setStatus("Error: File system error during renaming " + path);
+            } catch (IOException e) {
+                LOGGER.severe("An error occurred: " + e.getMessage());
+                try (PrintWriter writer = new PrintWriter(new FileWriter(errorFile, true))) {
+                    writer.println("An error occurred: " + e.getMessage());
+                } catch (IOException eIOE) {
+                    LOGGER.severe("An error occurred: " + eIOE.getMessage());
+                }
+                setStatus("Error: An error occurred during renaming " + path);
+            }
+        }
+    }
+
+    private List<String> parseForbiddenWords(String input) {
+        if (input == null || input.isBlank()) {
+            return List.of();
+        }
+
+        List<String> words = new ArrayList<>();
+        java.util.regex.Matcher matcher = Pattern.compile("\"([^\"]+)\"|(\\S+)").matcher(input);
+
+        while (matcher.find()) {
+            String quoted = matcher.group(1);
+            String unquoted = matcher.group(2);
+            String value = quoted != null ? quoted : unquoted;
+
+            if (value != null) {
+                String trimmed = value.trim();
+                if (!trimmed.isEmpty()) {
+                    words.add(trimmed);
+                }
+            }
+        }
+
+        return words;
     }
 
     private static void runCli(List<String> args) {
