@@ -1,0 +1,52 @@
+plugins {
+    id 'application'
+}
+
+group = 'pl.syntaxerr'
+version = '1.0-beta-4'
+
+base {
+    archivesName = 'T.F.N.C'
+}
+
+description = 'Basic version of the program with GUI - Does not require running from the terminal'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.jetbrains:annotations:26.1.0'
+}
+
+application {
+    mainClass = 'pl.syntaxerr.FileRenamer'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+tasks.named('jar') {
+    manifest {
+        attributes(
+            'Main-Class': application.mainClass.get(),
+            'Class-Path': configurations.runtimeClasspath.files.collect { "lib/${it.name}" }.join(' ')
+        )
+    }
+}
+
+tasks.register('copyRuntimeLibs', Copy) {
+    from configurations.runtimeClasspath
+    into layout.buildDirectory.dir('libs/lib')
+}
+
+tasks.named('assemble') {
+    dependsOn tasks.named('copyRuntimeLibs')
+}
