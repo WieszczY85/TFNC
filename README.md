@@ -62,6 +62,18 @@ Argumenty po ścieżce katalogu są opcjonalne i działają jako **dodatkowe sł
 java -jar build/libs/T.F.N.C.-1.0-beta-4.jar --diagnose-gui
 ```
 
+### 4) Cofanie zmian nazw z `history.txt`
+
+```bash
+java -jar build/libs/T.F.N.C.-1.0-beta-4.jar --undo-history <katalog>
+```
+
+To polecenie czyta `history.txt` i próbuje odwrócić zmiany w odwrotnej kolejności.
+
+> Ważne: stare wpisy historii miały tylko nazwy (`old -> new`) bez pełnych ścieżek.  
+> Dla takich wpisów cofanie działa wyłącznie wtedy, gdy w podanym katalogu jest dokładnie **jedno** dopasowanie nazwy.
+> Przy wieloznaczności wpis jest pomijany, żeby nie zepsuć nazw bardziej.
+
 ## Testy
 
 Uruchom testy (także gdy aktualnie nie ma jeszcze testów jednostkowych):

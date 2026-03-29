@@ -14,6 +14,9 @@ import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
 public class FileRenamer {
+    private static final String HISTORY_PREFIX = "Changed file/directory name: ";
+    private static final String HISTORY_SEPARATOR = " to ";
+    private static final String STRUCTURED_HISTORY_PREFIX = "RENAMED\t";
     private static final Logger LOGGER = Logger.getLogger(FileRenamer.class.getName());
     private static final List<String> DEFAULT_FORBIDDEN_WORDS = List.of(
             "[xtorrenty.org]", "[Ex-torrenty.org]", "[DEVIL-TORRENTS.PL]", "[POLSKIE-TORRENTY.EU]", "[superseed.byethost7.com]",
@@ -65,7 +68,7 @@ public class FileRenamer {
         forbiddenWordsArea = new JTextArea();
         forbiddenWordsArea.setLineWrap(true);
         forbiddenWordsArea.setWrapStyleWord(true);
-        forbiddenWordsArea.setToolTipText("Enter forbidden words here, separating them with spaces");
+        forbiddenWordsArea.setToolTipText("Enter forbidden words here, one per line");
 
         JButton runButton = new JButton("Run");
 
@@ -303,7 +306,8 @@ public class FileRenamer {
                 Files.move(path, path.resolveSibling(newName));
                 LOGGER.severe("Changed file/directory name: " + name + " to " + newName);
                 try (PrintWriter writer = new PrintWriter(new FileWriter(historyFile, true))) {
-                    writer.println("Changed file/directory name: " + name + " to " + newName);
+                    writer.println(HISTORY_PREFIX + name + HISTORY_SEPARATOR + newName);
+                    writer.println(STRUCTURED_HISTORY_PREFIX + path.toAbsolutePath() + "\t" + path.resolveSibling(newName).toAbsolutePath());
                 } catch (IOException epath) {
                     LOGGER.severe("An error occurred: " + epath.getMessage());
                 }
@@ -335,25 +339,27 @@ public class FileRenamer {
         }
     }
 
-    private List<String> parseForbiddenWords(String input) {
+    static List<String> parseForbiddenWords(String input) {
         if (input == null || input.isBlank()) {
             return List.of();
         }
 
         List<String> words = new ArrayList<>();
-        java.util.regex.Matcher matcher = Pattern.compile("\"([^\"]+)\"|(\\S+)").matcher(input);
-
-        while (matcher.find()) {
-            String quoted = matcher.group(1);
-            String unquoted = matcher.group(2);
-            String value = quoted != null ? quoted : unquoted;
-
-            if (value != null) {
-                String trimmed = value.trim();
-                if (!trimmed.isEmpty()) {
-                    words.add(trimmed);
-                }
+        for (String line : input.split("\\R")) {
+            if (line == null) {
+                continue;
             }
+
+            if (line.trim().isEmpty()) {
+                continue;
+            }
+
+            String value = line;
+            if (line.length() >= 2 && line.startsWith("\"") && line.endsWith("\"")) {
+                value = line.substring(1, line.length() - 1);
+            }
+
+            words.add(value);
         }
 
         return words;
@@ -379,6 +385,140 @@ public class FileRenamer {
         }
 
         renamer.renameFilesAndDirectoriesInDirectory(directory, new ArrayList<>(mergedForbiddenWords));
+    }
+
+    private record HistoryEntry(String oldName, String newName, Path oldPath, Path newPath) {
+        boolean hasAbsolutePaths() {
+            return oldPath != null && newPath != null;
+        }
+    }
+
+    private List<HistoryEntry> readHistoryEntries() {
+        if (!historyFile.exists()) {
+            return List.of();
+        }
+
+        List<HistoryEntry> entries = new ArrayList<>();
+        try {
+            for (String line : Files.readAllLines(historyFile.toPath())) {
+                if (line == null || line.isBlank()) {
+                    continue;
+                }
+
+                if (line.startsWith(STRUCTURED_HISTORY_PREFIX)) {
+                    String payload = line.substring(STRUCTURED_HISTORY_PREFIX.length());
+                    String[] parts = payload.split("\t", 2);
+                    if (parts.length == 2) {
+                        Path oldPath = Path.of(parts[0]);
+                        Path newPath = Path.of(parts[1]);
+                        entries.add(new HistoryEntry(oldPath.getFileName().toString(), newPath.getFileName().toString(), oldPath, newPath));
+                    }
+                    continue;
+                }
+
+                if (!line.startsWith(HISTORY_PREFIX)) {
+                    continue;
+                }
+
+                String payload = line.substring(HISTORY_PREFIX.length());
+                int separator = payload.lastIndexOf(HISTORY_SEPARATOR);
+                if (separator <= 0 || separator + HISTORY_SEPARATOR.length() >= payload.length()) {
+                    continue;
+                }
+
+                String oldName = payload.substring(0, separator);
+                String newName = payload.substring(separator + HISTORY_SEPARATOR.length());
+                entries.add(new HistoryEntry(oldName, newName, null, null));
+            }
+        } catch (IOException ex) {
+            LOGGER.severe("Nie udało się odczytać historii zmian: " + ex.getMessage());
+        }
+
+        return entries;
+    }
+
+    void undoRenamesFromHistory(String directory) {
+        Path root = Paths.get(directory);
+        if (!Files.isDirectory(root)) {
+            LOGGER.severe("Podana ścieżka nie jest katalogiem: " + directory);
+            return;
+        }
+
+        List<HistoryEntry> entries = readHistoryEntries();
+        if (entries.isEmpty()) {
+            LOGGER.severe("Brak wpisów historii do cofnięcia.");
+            return;
+        }
+
+        int reverted = 0;
+        int skipped = 0;
+        for (int i = entries.size() - 1; i >= 0; i--) {
+            HistoryEntry entry = entries.get(i);
+            boolean success = entry.hasAbsolutePaths()
+                    ? revertByAbsolutePath(entry)
+                    : revertByName(root, entry.oldName, entry.newName);
+            if (success) {
+                reverted++;
+            } else {
+                skipped++;
+            }
+        }
+
+        LOGGER.info("Cofanie zmian zakończone. Przywrócone=" + reverted + ", pominięte=" + skipped);
+    }
+
+    private boolean revertByAbsolutePath(HistoryEntry entry) {
+        if (!Files.exists(entry.newPath)) {
+            return false;
+        }
+
+        if (Files.exists(entry.oldPath)) {
+            LOGGER.severe("Pominięto cofnięcie (cel już istnieje): " + entry.oldPath);
+            return false;
+        }
+
+        try {
+            Files.move(entry.newPath, entry.oldPath);
+            LOGGER.info("Przywrócono nazwę: " + entry.newPath + " -> " + entry.oldPath);
+            return true;
+        } catch (IOException ex) {
+            LOGGER.severe("Nie udało się cofnąć zmiany dla: " + entry.newPath + " (" + ex.getMessage() + ")");
+            return false;
+        }
+    }
+
+    private boolean revertByName(Path root, String oldName, String newName) {
+        List<Path> matches = new ArrayList<>();
+        try {
+            try (var paths = Files.walk(root)) {
+                paths.filter(path -> path.getFileName() != null && path.getFileName().toString().equals(newName))
+                        .forEach(matches::add);
+            }
+        } catch (IOException ex) {
+            LOGGER.severe("Nie udało się przeszukać katalogu do cofania zmian: " + ex.getMessage());
+            return false;
+        }
+
+        if (matches.size() != 1) {
+            LOGGER.severe("Pominięto cofnięcie dla '" + newName + "' (liczba dopasowań=" + matches.size() + ")");
+            return false;
+        }
+
+        Path current = matches.getFirst();
+        Path target = current.resolveSibling(oldName);
+        if (Files.exists(target)) {
+            LOGGER.severe("Pominięto cofnięcie, bo istnieje już: " + target);
+            return false;
+        }
+
+        try {
+            Files.move(current, target);
+            LOGGER.info("Przywrócono nazwę: " + current + " -> " + target);
+            return true;
+        } catch (IOException ex) {
+            LOGGER.severe("Nie udało się cofnąć zmiany dla: " + current + " (" + ex.getMessage() + ")");
+            return false;
+        }
     }
 
     private static void logGuiTroubleshooting(Throwable ex) {
@@ -471,15 +611,16 @@ public class FileRenamer {
         boolean forceCli = Arrays.stream(args).anyMatch(arg -> "--cli".equalsIgnoreCase(arg));
         boolean forceGui = Arrays.stream(args).anyMatch(arg -> "--gui".equalsIgnoreCase(arg));
         boolean diagnoseGui = Arrays.stream(args).anyMatch(arg -> "--diagnose-gui".equalsIgnoreCase(arg));
+        boolean undoHistory = Arrays.stream(args).anyMatch(arg -> "--undo-history".equalsIgnoreCase(arg));
 
-        if ((forceCli && forceGui) || (diagnoseGui && (forceCli || forceGui))) {
-            LOGGER.severe("Nieprawidłowa kombinacja flag. Użyj tylko jednego trybu: --gui, --cli lub --diagnose-gui.");
+        if ((forceCli && forceGui) || (diagnoseGui && (forceCli || forceGui || undoHistory)) || (undoHistory && (forceCli || forceGui))) {
+            LOGGER.severe("Nieprawidłowa kombinacja flag. Użyj tylko jednego trybu: --gui, --cli, --undo-history lub --diagnose-gui.");
             System.exit(2);
             return;
         }
 
         List<String> filteredArgs = Arrays.stream(args)
-                .filter(arg -> !"--cli".equalsIgnoreCase(arg) && !"--gui".equalsIgnoreCase(arg) && !"--diagnose-gui".equalsIgnoreCase(arg))
+                .filter(arg -> !"--cli".equalsIgnoreCase(arg) && !"--gui".equalsIgnoreCase(arg) && !"--diagnose-gui".equalsIgnoreCase(arg) && !"--undo-history".equalsIgnoreCase(arg))
                 .toList();
 
         if (diagnoseGui) {
@@ -489,6 +630,16 @@ public class FileRenamer {
 
         if (forceCli) {
             runCli(filteredArgs);
+            return;
+        }
+
+        if (undoHistory) {
+            if (filteredArgs.size() != 1) {
+                LOGGER.severe("Tryb --undo-history wymaga argumentu: <katalog>");
+                System.exit(1);
+                return;
+            }
+            new FileRenamer(true).undoRenamesFromHistory(filteredArgs.getFirst());
             return;
         }
 
